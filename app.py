@@ -1,4 +1,3 @@
-import pandas as pd
 import anthropic
 import os
 from dotenv import load_dotenv
@@ -8,69 +7,93 @@ import streamlit as st
 load_dotenv()
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-# --- Dataset Loading (Adapt This!) ---
-def load_exercise_data(csv_file):
-    df = pd.read_csv(csv_file)
-    # ... potentially extract relevant columns & data cleaning ... 
-    return df 
-
-# Replace 'your_data.csv' with your actual filename
-exercise_data = load_exercise_data('megaGymDataset.csv') 
-
-# ---  Process User Queries ---
 def gather_user_preferences():
-    goal = st.selectbox("What's your main fitness goal?", 
+    goal = st.selectbox("What's your main fitness goal?",
                         ["Weight Loss", "Build Muscle", "Endurance", "General Fitness"])
     experience = st.radio("What's your experience level?",
                           ["Beginner", "Intermediate", "Advanced"])
     restrictions = st.checkbox("Any injuries or limitations?")
-    # ... more questions can be added
-
     return goal, experience, restrictions
 
-def process_query(query, exercise_data, user_preferences=None):
-    if user_preferences is None:
-         # First Time - Gather preferences
-         goal, experience, restrictions = gather_user_preferences()
-         return process_query(query, exercise_data, 
-                              user_preferences={"goal": goal, 
-                                            "experience": experience, 
-                                            "restrictions": restrictions})
+def craft_fitness_prompt(goal, experience, restrictions, workout_length, workout_focus, variation):
+    restriction_text = (
+        "The user has some injuries or limitations, so suggest modifications as needed."
+        if restrictions else
+        "The user has no injuries or limitations."
+    )
 
-    # 2. General Workout or Fitness Questions using Claude
-    prompt = craft_fitness_prompt(query, exercise_data)  # Helper function below
+    if workout_focus in ["Freeweights", "Circuit"]:
+        detail_instruction = (
+            "For each exercise, provide:\n"
+            "- Sets and reps\n"
+            "- A detailed description of how to perform it (form tips, muscles worked, equipment needed)"
+        )
+    else:
+        detail_instruction = (
+            "Provide a structured session plan including:\n"
+            "- Warm-up\n"
+            "- Main session (intervals or segments with duration/pace)\n"
+            "- Cool-down"
+        )
+
+    variation_text = ""
+    if variation > 0:
+        variation_text = (
+            f"\nThis is variation #{variation}, make it meaningfully different from a standard workout."
+        )
+
+    prompt = (
+        f"You are an expert personal trainer. Create a {workout_length} {workout_focus} workout.\n\n"
+        f"User profile:\n"
+        f"- Fitness goal: {goal}\n"
+        f"- Experience level: {experience}\n"
+        f"- {restriction_text}\n\n"
+        f"{detail_instruction}"
+        f"{variation_text}"
+    )
+    return prompt
+
+def process_query(goal, experience, restrictions, workout_length, workout_focus, variation):
+    prompt = craft_fitness_prompt(goal, experience, restrictions, workout_length, workout_focus, variation)
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[{"role": "user", "content": prompt}]
     )
     return response.content[0].text
 
-# --- Helper Functions (You might need to adjust) ---
-def user_asks_about_exercise(query):
-    # Simple keyword detection, make this smarter!
-    return "describe" in query or "how to" in query 
-
-def extract_exercise_name(query):
-    # Basic extraction,  improve this with NLP techniques if needed
-    return query.split("describe ")[1] 
-
-def describe_exercise(exercise, data):
-    # ... lookup  exercise in 'data' & construct a description ...
-    return "Description from dataset here..." 
-
-def craft_fitness_prompt(query, data):
-    # ... construct the 'You are a fitness expert...' type prompt  ...
-    return "User Query: " + query 
-
 # --- Streamlit UI ---
 st.title("Fitness Knowledge Bot")
 
-# Gather preferences right at the start 
-user_preferences = gather_user_preferences() 
+# Session state
+if 'workout' not in st.session_state:
+    st.session_state.workout = None
+if 'variation' not in st.session_state:
+    st.session_state.variation = 0
 
-user_input = st.text_input("Ask me about workouts or fitness...")
+# Gather preferences
+goal, experience, restrictions = gather_user_preferences()
 
-if st.button("Submit"): 
-  chatbot_response = process_query(user_input, exercise_data, user_preferences)
-  st.write("Chatbot:", chatbot_response) 
+# Workout options
+workout_length = st.selectbox("Workout length", ["30 min", "45 min", "60 min", "90 min"])
+workout_focus = st.radio("Workout focus", ["Running", "Indoor Cardio", "Freeweights", "Circuit"])
+
+# Buttons
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("Generate Workout"):
+        st.session_state.variation = 0
+        st.session_state.workout = process_query(
+            goal, experience, restrictions, workout_length, workout_focus, st.session_state.variation
+        )
+
+with col2:
+    if st.button("Generate Different Workout"):
+        st.session_state.variation += 1
+        st.session_state.workout = process_query(
+            goal, experience, restrictions, workout_length, workout_focus, st.session_state.variation
+        )
+
+# Display workout
+if st.session_state.workout:
+    st.markdown(st.session_state.workout)
