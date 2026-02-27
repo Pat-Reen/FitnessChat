@@ -1,4 +1,4 @@
-cohere
+anthropic
 streamlit
 requests
 python-dotenv

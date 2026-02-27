@@ -1,13 +1,12 @@
 import pandas as pd
-import cohere
+import anthropic
 import os
 from dotenv import load_dotenv
 import streamlit as st
 
-# Load environment variables 
-load_dotenv()  
-cohere_api_key = os.environ["COHERE_API_KEY"]
-co = cohere.Client(cohere_api_key)
+# Load environment variables
+load_dotenv()
+client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 # --- Dataset Loading (Adapt This!) ---
 def load_exercise_data(csv_file):
@@ -38,13 +37,14 @@ def process_query(query, exercise_data, user_preferences=None):
                                             "experience": experience, 
                                             "restrictions": restrictions})
 
-    # 2. General Workout or Fitness Questions using Cohere
+    # 2. General Workout or Fitness Questions using Claude
     prompt = craft_fitness_prompt(query, exercise_data)  # Helper function below
-    response = co.generate( 
-        model='command-nightly',  
-        prompt=prompt,   
-        stop_sequences=["--"]) 
-    return response.generations[0].text
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.content[0].text
 
 # --- Helper Functions (You might need to adjust) ---
 def user_asks_about_exercise(query):
