@@ -4,6 +4,48 @@ from dotenv import load_dotenv
 import streamlit as st
 import streamlit.components.v1 as components
 
+st.set_page_config(
+    page_title="Fitness Chat",
+    page_icon="🏋️",
+    layout="centered",
+)
+
+GLOBAL_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+html, body, [class*="css"], .stMarkdown, .stTextInput, .stSelectbox,
+.stRadio, .stMultiSelect, .stCheckbox, .stButton, .stCaption {
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* Tighten top padding */
+.block-container { padding-top: 2rem; padding-bottom: 3rem; }
+
+/* Title */
+h1 { font-weight: 700 !important; letter-spacing: -0.5px; }
+
+/* Section headers — green accent */
+h2 { color: #2d6a4f !important; font-weight: 600 !important; }
+h3 { color: #2d6a4f !important; font-weight: 600 !important; font-size: 1.05rem !important; }
+
+/* Subtle rule under the title */
+h1 + div { border-top: 2px solid #2d6a4f; padding-top: 1rem; }
+
+/* Make expander header a touch bolder */
+[data-testid="stExpander"] summary {
+    font-weight: 600;
+    color: #212529;
+}
+
+/* Checkbox label size */
+.stCheckbox label { font-size: 0.95rem; }
+
+/* Caption row */
+.stCaptionContainer { color: #6c757d !important; font-size: 0.85rem !important; }
+</style>
+"""
+
 # Load environment variables
 load_dotenv()
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -278,17 +320,18 @@ PRINT_CSS = """
 
 PRINT_BUTTON_HTML = """
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap');
 button.print-btn {
     padding: 0.4rem 1rem;
-    background: #f0f2f6;
-    border: 1px solid #d0d3da;
+    background: #e9ecef;
+    border: 1px solid #ced4da;
     border-radius: 0.375rem;
     cursor: pointer;
     font-size: 0.875rem;
-    color: #31333f;
-    font-family: inherit;
+    color: #212529;
+    font-family: 'Inter', sans-serif;
 }
-button.print-btn:hover { background: #e0e3ea; }
+button.print-btn:hover { background: #dee2e6; }
 </style>
 <button class="print-btn" onclick="window.parent.print()">🖨️ Print / Save as PDF</button>
 """
@@ -336,6 +379,7 @@ def render_workout():
 # Main
 # ---------------------------------------------------------------------------
 
+st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 st.title("Fitness Chat")
 
 init_state()
