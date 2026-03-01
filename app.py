@@ -38,15 +38,21 @@ EXERCISES = {
         "Cable Bicep Curl", "Tricep Pushdown (Cable)", "Skull Crusher",
         "Dumbbell Overhead Tricep Extension", "Tricep Dip",
     ],
-    "Core": [
-        "Plank", "Cable Crunch", "Hanging Leg Raise",
+    "Core (Equipment)": [
+        "Cable Crunch", "Hanging Leg Raise",
         "Russian Twist (Medicine Ball)",
         "Bench Crunch", "Pallof Press (Cable)",
     ],
+    "Mat Core": [
+        "Dead Bug", "Hollow Body Hold", "Bird Dog",
+        "Full Plank", "Side Plank (Left)", "Side Plank (Right)",
+        "High Side Plank", "Side Plank Reach Through",
+        "Bicycle Crunch", "Reverse Crunch", "V-Up",
+        "Glute Bridge", "Wall Sit",
+    ],
     "Cardio": [
-        "Treadmill Run/Walk", "Rowing Machine", "Stationary Bike",
-        "Spin Bike", "Elliptical Trainer", "Stair Climber",
-        "Kettlebell Swing",
+        "Rowing Machine", "Stationary Bike", "Spin Bike",
+        "Elliptical Trainer", "Stair Climber", "Treadmill Run/Walk",
     ],
     "Full Body / Functional": [
         "Kettlebell Swing", "Kettlebell Turkish Get-Up",
@@ -124,7 +130,8 @@ def build_workout(
         f"{variation_line}\n\n"
         f"Exercises to include:\n{exercise_list}\n\n"
         f"Format the plan in markdown with:\n"
-        f"1. A brief warm-up note\n"
+        f"1. Warm-up: 10–20 minutes on the rowing machine or stationary/spin bike "
+        f"(the user runs on non-gym days so do NOT suggest treadmill/running as a warm-up)\n"
         f"2. For each exercise: sets × reps (or duration), rest period, "
         f"and 1–2 concise form cues (key points only, no essays)\n"
         f"3. A brief cool-down note"
