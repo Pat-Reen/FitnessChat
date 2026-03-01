@@ -283,7 +283,44 @@ def render_selection():
             st.rerun()
 
 
+PRINT_CSS = """
+<style>
+@media print {
+    /* Hide all Streamlit chrome */
+    header, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"], #MainMenu,
+    .stDeployButton, [data-testid="stSidebarNav"] { display: none !important; }
+    /* Hide buttons and dividers */
+    .stButton, hr { display: none !important; }
+    /* Remove container padding so content fills the page */
+    .block-container { padding: 1rem 2rem !important; }
+}
+</style>
+"""
+
+PRINT_BUTTON = """
+<style>
+.print-btn {
+    display: inline-block;
+    padding: 0.4rem 1rem;
+    background: #f0f2f6;
+    border: 1px solid #d0d3da;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: #31333f;
+    text-decoration: none;
+}
+.print-btn:hover { background: #e0e3ea; }
+</style>
+<a class="print-btn" onclick="window.print(); return false;" href="#">🖨️ Print / Save as PDF</a>
+"""
+
+
 def render_workout():
+    # Inject print CSS (active only when browser print dialog is open)
+    st.markdown(PRINT_CSS, unsafe_allow_html=True)
+
     st.header("Your Workout")
     st.caption(
         f"Goal: **{st.session_state.goal}** · "
@@ -294,7 +331,7 @@ def render_workout():
     st.markdown(st.session_state.workout)
 
     st.divider()
-    col1, col2 = st.columns([2, 1])
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         if st.button("Regenerate", type="primary"):
             st.session_state.variation += 1
@@ -313,6 +350,8 @@ def render_workout():
         if st.button("← Start Over"):
             st.session_state.stage = "preferences"
             st.rerun()
+    with col3:
+        st.markdown(PRINT_BUTTON, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
