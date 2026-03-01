@@ -1,8 +1,8 @@
-import json
 import anthropic
 import os
 from dotenv import load_dotenv
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Load environment variables
 load_dotenv()
@@ -19,7 +19,7 @@ EXERCISES = {
     ],
     "Back": [
         "Lat Pulldown", "Seated Cable Row", "Barbell Bent-Over Row",
-        "Dumbbell Bent-Over Row", "Dumbbell Single-Arm Row", 
+        "Dumbbell Bent-Over Row", "Dumbbell Single-Arm Row",
         "Deadlift", "Romanian Deadlift",
         "Pull-Up / Chin-Up", "Face Pull (Cable)",
     ],
@@ -60,54 +60,22 @@ EXERCISES = {
     ],
 }
 
-ALL_EXERCISES = sorted({ex for group in EXERCISES.values() for ex in group})
+MUSCLE_GROUPS = list(EXERCISES.keys())
 
 # ---------------------------------------------------------------------------
-# Claude helpers
+# Claude helper — single call
 # ---------------------------------------------------------------------------
-
-def suggest_exercises(goal: str, experience: str, restrictions: str, duration: str) -> list[str]:
-    """Call 1 — returns a JSON list of 6-8 exercise names."""
-    master = json.dumps(ALL_EXERCISES)
-    restriction_line = (
-        f"The user has these restrictions/injuries: {restrictions}."
-        if restrictions.strip()
-        else "The user has no injuries or limitations."
-    )
-    prompt = (
-        f"You are an expert personal trainer. Choose 6 to 8 exercises from the list below "
-        f"that best suit this user's profile. Return ONLY a valid JSON array of exercise names "
-        f"(no other text, no markdown fences).\n\n"
-        f"User profile:\n"
-        f"- Goal: {goal}\n"
-        f"- Experience: {experience}\n"
-        f"- {restriction_line}\n"
-        f"- Session duration: {duration}\n\n"
-        f"Master exercise list:\n{master}"
-    )
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=512,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = response.content[0].text.strip()
-    try:
-        exercises = json.loads(raw)
-        # Keep only names that exist in our master list
-        return [e for e in exercises if e in ALL_EXERCISES]
-    except json.JSONDecodeError:
-        return []
-
 
 def build_workout(
     goal: str,
     experience: str,
     restrictions: str,
     duration: str,
+    focus_groups: list[str],
     exercises: list[str],
     variation: int,
 ) -> str:
-    """Call 2 — returns a markdown workout plan."""
+    """Single Claude call — returns a markdown workout plan."""
     restriction_line = (
         f"The user has these restrictions/injuries: {restrictions}. Provide modifications where relevant."
         if restrictions.strip()
@@ -119,21 +87,29 @@ def build_workout(
         if variation > 0
         else ""
     )
+    groups_text = ", ".join(focus_groups)
     exercise_list = "\n".join(f"- {e}" for e in exercises)
     prompt = (
         f"You are an expert personal trainer. Write a structured {duration} gym workout "
-        f"using ONLY the exercises listed below.\n\n"
+        f"using ONLY the exercises listed below. The session focuses on: {groups_text}.\n\n"
         f"User profile:\n"
         f"- Goal: {goal}\n"
         f"- Experience: {experience}\n"
         f"- {restriction_line}\n"
         f"{variation_line}\n\n"
         f"Exercises to include:\n{exercise_list}\n\n"
+        f"IMPORTANT: The entire session — warm-up, all sets, all rest periods, and cool-down — "
+        f"must fit within {duration}. Choose an appropriate number of sets per exercise so the "
+        f"timing works out. Do not over-program.\n\n"
         f"Format the plan in markdown with:\n"
         f"1. Warm-up: 10–20 minutes on the rowing machine or stationary/spin bike "
         f"(the user runs on non-gym days so do NOT suggest treadmill/running as a warm-up)\n"
-        f"2. For each exercise: sets × reps (or duration), rest period, "
-        f"and 1–2 concise form cues (key points only, no essays)\n"
+        f"2. Main workout — order exercises logically for a real gym session:\n"
+        f"   - Lead with the most demanding compound movements\n"
+        f"   - Group exercises by area of the gym to minimise equipment changes and walking\n"
+        f"   - Finish with isolation or machine work, then mat/core exercises last\n"
+        f"   - You may superset antagonist muscle groups (e.g. chest + back) where it makes sense\n"
+        f"   - For each exercise: sets × reps (or duration), rest period\n"
         f"3. A brief cool-down note"
     )
     response = client.messages.create(
@@ -151,11 +127,10 @@ def build_workout(
 def init_state():
     defaults = {
         "stage": "preferences",
-        "suggested": [],
+        "focus_groups": [],
         "selected": [],
         "workout": "",
         "variation": 0,
-        # Capture preferences so Stage 2/3 can reference them
         "goal": "Build Muscle",
         "experience": "Intermediate",
         "restrictions": "",
@@ -174,7 +149,7 @@ def render_preferences():
     st.header("Your Preferences")
 
     goal = st.selectbox(
-        "What's your main fitness goal?",
+        "Fitness goal",
         ["Build Muscle", "Weight Loss", "Endurance", "General Fitness"],
         index=["Build Muscle", "Weight Loss", "Endurance", "General Fitness"].index(
             st.session_state.goal
@@ -186,7 +161,7 @@ def render_preferences():
         index=["Beginner", "Intermediate", "Advanced"].index(st.session_state.experience),
     )
     restrictions = st.text_input(
-        "Any injuries or limitations? (leave blank if none)",
+        "Injuries or limitations (leave blank if none)",
         value=st.session_state.restrictions,
     )
     duration = st.selectbox(
@@ -195,71 +170,76 @@ def render_preferences():
         index=["30 min", "45 min", "60 min", "90 min"].index(st.session_state.duration),
     )
 
-    if st.button("Suggest Plan", type="primary"):
+    focus_groups = st.multiselect(
+        "Focus areas (pick 1–3)",
+        options=MUSCLE_GROUPS,
+        default=st.session_state.focus_groups if st.session_state.focus_groups else [],
+    )
+
+    if st.button("Select Exercises", type="primary", disabled=len(focus_groups) == 0):
         st.session_state.goal = goal
         st.session_state.experience = experience
         st.session_state.restrictions = restrictions
         st.session_state.duration = duration
+        st.session_state.focus_groups = focus_groups
 
-        with st.spinner("Asking Claude to suggest exercises…"):
-            suggested = suggest_exercises(goal, experience, restrictions, duration)
+        # Pre-select all exercises from the chosen groups (deduplicated)
+        seen: set[str] = set()
+        preselected: list[str] = []
+        for group in focus_groups:
+            for ex in EXERCISES.get(group, []):
+                if ex not in seen:
+                    seen.add(ex)
+                    preselected.append(ex)
 
-        if not suggested:
-            st.warning(
-                "Claude's suggestion couldn't be parsed. Showing the full exercise list — "
-                "please pick the ones you'd like."
-            )
-            suggested = []
-
-        st.session_state.suggested = suggested
-        st.session_state.selected = list(suggested)  # pre-select suggestions
+        st.session_state.selected = preselected
         st.session_state.variation = 0
         st.session_state.stage = "selection"
         st.rerun()
 
 
 def render_selection():
+    focus_groups = st.session_state.focus_groups
     st.header("Choose Your Exercises")
     st.caption(
+        f"Focus: **{', '.join(focus_groups)}** · "
         f"Goal: **{st.session_state.goal}** · "
-        f"Experience: **{st.session_state.experience}** · "
         f"Duration: **{st.session_state.duration}**"
     )
 
-    suggested = st.session_state.suggested
     selected = set(st.session_state.selected)
+    rendered: set[str] = set()
 
-    # --- Suggested exercises as pre-checked checkboxes ---
-    if suggested:
-        st.subheader("Claude's suggestions")
-        for ex in suggested:
-            checked = st.checkbox(ex, value=(ex in selected), key=f"sugg_{ex}")
+    # --- Focus group exercises — all pre-checked ---
+    for group in focus_groups:
+        st.subheader(group)
+        for ex in EXERCISES.get(group, []):
+            if ex in rendered:
+                continue
+            rendered.add(ex)
+            checked = st.checkbox(ex, value=(ex in selected), key=f"focus_{ex}")
             if checked:
                 selected.add(ex)
             else:
                 selected.discard(ex)
-    else:
-        st.info("No suggestions available — browse the full list below.")
 
-    # --- Full list in an expander ---
-    # Track which exercises have already been rendered to avoid duplicate keys
-    rendered_in_expander: set[str] = set()
-    with st.expander("Add more exercises"):
-        for group, exercises in EXERCISES.items():
-            st.markdown(f"**{group}**")
-            for ex in exercises:
-                if ex in suggested:
-                    continue  # already shown above
-                if ex in rendered_in_expander:
-                    continue  # skip duplicates across groups (e.g. Face Pull)
-                rendered_in_expander.add(ex)
-                checked = st.checkbox(ex, value=(ex in selected), key=f"full_{ex}")
-                if checked:
-                    selected.add(ex)
-                else:
-                    selected.discard(ex)
+    # --- Other groups in an expander ---
+    other_groups = [g for g in MUSCLE_GROUPS if g not in focus_groups]
+    if other_groups:
+        with st.expander("Add exercises from other groups"):
+            for group in other_groups:
+                st.markdown(f"**{group}**")
+                for ex in EXERCISES.get(group, []):
+                    if ex in rendered:
+                        continue
+                    rendered.add(ex)
+                    checked = st.checkbox(ex, value=(ex in selected), key=f"other_{ex}")
+                    if checked:
+                        selected.add(ex)
+                    else:
+                        selected.discard(ex)
 
-    st.session_state.selected = sorted(selected)
+    st.session_state.selected = list(selected)
 
     st.divider()
     col1, col2 = st.columns([2, 1])
@@ -271,6 +251,7 @@ def render_selection():
                     st.session_state.experience,
                     st.session_state.restrictions,
                     st.session_state.duration,
+                    st.session_state.focus_groups,
                     st.session_state.selected,
                     st.session_state.variation,
                 )
@@ -286,22 +267,18 @@ def render_selection():
 PRINT_CSS = """
 <style>
 @media print {
-    /* Hide all Streamlit chrome */
     header, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
     [data-testid="stStatusWidget"], #MainMenu,
     .stDeployButton, [data-testid="stSidebarNav"] { display: none !important; }
-    /* Hide buttons and dividers */
     .stButton, hr { display: none !important; }
-    /* Remove container padding so content fills the page */
     .block-container { padding: 1rem 2rem !important; }
 }
 </style>
 """
 
-PRINT_BUTTON = """
+PRINT_BUTTON_HTML = """
 <style>
-.print-btn {
-    display: inline-block;
+button.print-btn {
     padding: 0.4rem 1rem;
     background: #f0f2f6;
     border: 1px solid #d0d3da;
@@ -309,20 +286,20 @@ PRINT_BUTTON = """
     cursor: pointer;
     font-size: 0.875rem;
     color: #31333f;
-    text-decoration: none;
+    font-family: inherit;
 }
-.print-btn:hover { background: #e0e3ea; }
+button.print-btn:hover { background: #e0e3ea; }
 </style>
-<a class="print-btn" onclick="window.print(); return false;" href="#">🖨️ Print / Save as PDF</a>
+<button class="print-btn" onclick="window.parent.print()">🖨️ Print / Save as PDF</button>
 """
 
 
 def render_workout():
-    # Inject print CSS (active only when browser print dialog is open)
     st.markdown(PRINT_CSS, unsafe_allow_html=True)
 
     st.header("Your Workout")
     st.caption(
+        f"Focus: **{', '.join(st.session_state.focus_groups)}** · "
         f"Goal: **{st.session_state.goal}** · "
         f"Experience: **{st.session_state.experience}** · "
         f"Duration: **{st.session_state.duration}**"
@@ -341,6 +318,7 @@ def render_workout():
                     st.session_state.experience,
                     st.session_state.restrictions,
                     st.session_state.duration,
+                    st.session_state.focus_groups,
                     st.session_state.selected,
                     st.session_state.variation,
                 )
@@ -351,7 +329,7 @@ def render_workout():
             st.session_state.stage = "preferences"
             st.rerun()
     with col3:
-        st.markdown(PRINT_BUTTON, unsafe_allow_html=True)
+        components.html(PRINT_BUTTON_HTML, height=45)
 
 
 # ---------------------------------------------------------------------------
